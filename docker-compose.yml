@@ -7,8 +7,8 @@ services:
     container_name: xiaozhi-mp3-api
     restart: unless-stopped
     working_dir: /app
-    ports:
-      - "5555:5555"  # Port cho mp3-api (có thể truy cập trực tiếp để test)
+    # ports:
+    #   - "5555:5555"  # Port cho mp3-api (có thể truy cập trực tiếp để test)
     environment:
       - PORT=5555
       - NODE_ENV=production
@@ -36,7 +36,8 @@ services:
       - PORT=5005
       - NODE_ENV=production
       - MP3_API_URL=http://mp3-api:5555
-      - SECRET_KEY=your-esp32-secret-key-2024
+      - SECRET_KEY=${SECRET_KEY}
+      - ADAPTER_URL=${ADAPTER_URL:-http://xiaozhi-adapter:5005}
     volumes:
       - ./adapter:/app
     command: sh -c "npm install && node xiaozhi-adapter.js"
@@ -49,6 +50,27 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    networks:
+      - xiaozhi-network
+
+  # Service 3: MCP Server (Model Context Protocol - Python)
+  mcp-server:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+      target: production
+    container_name: xiaozhi-mcp-server
+    restart: unless-stopped
+    environment:
+      - MCP_ENDPOINT=${MCP_ENDPOINT}
+      - ADAPTER_URL=${ADAPTER_URL:-http://xiaozhi-adapter:5005}
+      - VERIFY_SSL=${VERIFY_SSL:-true}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./mcp-server:/app
+    depends_on:
+      xiaozhi-adapter:
+        condition: service_healthy
     networks:
       - xiaozhi-network
 

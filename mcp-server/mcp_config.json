@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    // "xiaozhi-music": {
+    //   "type": "stdio",
+    //   "command": "python3",
+    //   "args": ["-u", "music_server.py"],
+    //   "env": {
+    //     "ADAPTER_URL": "https://xiaozhi_music.monpham.work"
+    //   }
+    // }
+  }
+}

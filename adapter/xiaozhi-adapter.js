@@ -5,14 +5,92 @@
 
 const express = require('express');
 const axios = require('axios');
+const ffmpeg = require('fluent-ffmpeg');
+const { Readable } = require('stream');
 
 const app = express();
 const PORT = process.env.PORT || 5006;
 const MP3_API_URL = process.env.MP3_API_URL || 'http://mp3-api:5555';
-
+const ADAPTER_URL=  process.env.ADAPTER_URL || 'https://xiaozhi_music.monpham.work'
 // CACHE ĐƠN GIẢN
 const audioCache = new Map(); // {songId: Buffer}
-const CACHE_MAX_SIZE = 10;
+const CACHE_MAX_SIZE = 100;
+
+// ===== FIX UTF-8 ENCODING =====
+app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+    // Ensure proper UTF-8 handling for query parameters
+    if (req.query) {
+        Object.keys(req.query).forEach(key => {
+            if (typeof req.query[key] === 'string') {
+                try {
+                    // Re-decode if needed to handle double encoding
+                    req.query[key] = decodeURIComponent(req.query[key]);
+                } catch (e) {
+                    // Already decoded, keep as is
+                }
+            }
+        });
+    }
+    next();
+});
+
+app.get('/audio', async (req, res) => {
+    try {
+        const { song, artist = '' } = req.query;
+
+        if (!song) {
+            return res.status(400).json({ error: 'Missing song parameter' });
+        }
+
+        console.log(`🎶 Getting audio URL: "${song}" by "${artist}"`);
+
+        const searchQuery = artist ? `${song} ${artist}` : song;
+        const searchUrl = `${MP3_API_URL}/api/search?q=${encodeURIComponent(searchQuery)}`;
+        
+        const searchResponse = await axios.get(searchUrl, {
+            timeout: 15000,
+            headers: { 'User-Agent': 'Xiaozhi-Adapter/1.0' }
+        });
+
+        let songs = [];
+        if (searchResponse.data.err === 0 && 
+            searchResponse.data.data && 
+            Array.isArray(searchResponse.data.data.songs)) {
+            songs = searchResponse.data.data.songs;
+        }
+
+        if (songs.length === 0) {
+            return res.status(404).json({
+                error: 'Song not found',
+                title: song,
+                artist: artist || 'Unknown'
+            });
+        }
+
+        const topSong = songs[0];
+        const songId = topSong.encodeId;
+
+        if (!songId) {
+            return res.status(404).json({ error: 'Song ID not found' });
+        }
+
+        console.log(`✅ Found: ${topSong.title} (ID: ${songId})`);
+
+        // Return direct audio URL
+        res.json({
+            title: topSong.title || song,
+            artist: topSong.artistsNames || artist || 'Unknown',
+            audio_url: `${ADAPTER_URL}/proxy_audio?id=${songId}`,
+            thumbnail: topSong.thumbnail || topSong.thumbnailM || '',
+            duration: topSong.duration || 0
+        });
+
+    } catch (error) {
+        console.error('❌ Error:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 app.get('/stream_pcm', async (req, res) => {
     try {
@@ -79,9 +157,14 @@ app.get('/stream_pcm', async (req, res) => {
 
                     const audioBuffer = Buffer.from(audioResponse.data);
                     console.log(`✅ Downloaded ${audioBuffer.length} bytes`);
+                    
+                    // Compress audio to reduce file size
+                    console.log(`🔄 Compressing audio...`);
+                    const compressedAudio = await compressAudio(audioBuffer);
+                    console.log(`✅ Compressed: ${audioBuffer.length} → ${compressedAudio.length} bytes (${Math.round((1 - compressedAudio.length/audioBuffer.length) * 100)}% reduction)`);
 
                     // Lưu vào cache
-                    audioCache.set(songId, audioBuffer);
+                    audioCache.set(songId, compressedAudio);
 
                     // Giới hạn cache size
                     if (audioCache.size > CACHE_MAX_SIZE) {
@@ -102,8 +185,8 @@ app.get('/stream_pcm', async (req, res) => {
                 title: songItem.title || song,
                 artist: songItem.artistsNames || artist || 'Unknown',
                 // ✅ RELATIVE PATH - ESP32 sẽ tự ghép với base_url
-                audio_url: `/proxy_audio?id=${songId}`,
-                lyric_url: `/proxy_lyric?id=${songId}`,
+                audio_url: `${ADAPTER_URL}/proxy_audio?id=${songId}`,
+                lyric_url: `${ADAPTER_URL}/proxy_lyric?id=${songId}`,
                 thumbnail: songItem.thumbnail || songItem.thumbnailM || '',
                 duration: songItem.duration || 0,
                 language: 'unknown'
@@ -245,3 +328,34 @@ app.listen(PORT, () => {
     console.log(`✅ Returns RELATIVE PATHS (ESP32 auto-builds full URL)`);
     console.log('='.repeat(60));
 });
+
+async function compressAudio(audioBuffer) {
+    return new Promise((resolve, reject) => {
+        const inputStream = new Readable();
+        inputStream.push(audioBuffer);
+        inputStream.push(null);
+
+        const chunks = [];
+        const outputStream = new Readable({
+            read() {
+                this.push(Buffer.concat(chunks));
+                this.push(null);
+            }
+        });
+
+        ffmpeg(inputStream)
+            .audioCodec('libmp3lame')
+            .audioBitrate('128k')
+            .format('mp3')
+            .on('error', (err) => {
+                reject(err);
+            })
+            .on('data', (chunk) => {
+                chunks.push(chunk);
+            })
+            .on('end', () => {
+                resolve(Buffer.concat(chunks));
+            })
+            .pipe(outputStream, { end: true });
+    });
+}

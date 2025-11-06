@@ -1,0 +1,100 @@
+{
+  "tools": [
+    {
+      "name": "play_music",
+      "description": "Play music - Get direct audio stream URL for a song (returns playable MP3 URL)",
+      "usage": "Use this to get a direct MP3 stream URL that can be played immediately",
+      "parameters": {
+        "song": {
+          "type": "string",
+          "required": true,
+          "description": "Name of the song to play"
+        },
+        "artist": {
+          "type": "string",
+          "required": false,
+          "description": "Artist name (optional, helps improve search accuracy)"
+        }
+      },
+      "returns": {
+        "success": "boolean",
+        "title": "string - Song title",
+        "artist": "string - Artist name",
+        "audio_url": "string - Direct MP3 stream URL",
+        "message": "string - Status message"
+      },
+      "example": {
+        "request": {
+          "song": "Nơi Này Có Anh",
+          "artist": "Sơn Tùng M-TP"
+        },
+        "response": {
+          "success": true,
+          "title": "Nơi Này Có Anh",
+          "artist": "Sơn Tùng M-TP",
+          "audio_url": "https://xiaozhi_music.monpham.work/proxy_audio?id=ZW79ZBE8",
+          "message": "Audio URL ready for: Nơi Này Có Anh"
+        }
+      }
+    },
+    {
+      "name": "search_music",
+      "description": "Search for music using song name and optional artist",
+      "usage": "Use this to search and get complete song information including audio, lyrics, and thumbnail",
+      "parameters": {
+        "song": {
+          "type": "string",
+          "required": true,
+          "description": "Name of the song to search for"
+        },
+        "artist": {
+          "type": "string",
+          "required": false,
+          "description": "Artist name (optional)"
+        }
+      }
+    },
+    {
+      "name": "get_music_stream",
+      "description": "Get streaming URL for a specific song",
+      "usage": "Similar to play_music but returns full song details with stream URL"
+    },
+    {
+      "name": "get_lyrics",
+      "description": "Get lyrics for a song",
+      "usage": "Retrieve song lyrics in LRC or plain text format"
+    },
+    {
+      "name": "get_gold_price",
+      "description": "Lấy giá vàng trong nước (VÀNG MIẾNG SJC và NHẪN TRÒN TRƠN)",
+      "usage": "Get current gold prices from Bảo Tín Minh Châu (BTMC)"
+    },
+    {
+      "name": "get_usd_rate",
+      "description": "Lấy tỷ giá USD/VND (Vietcombank, giá chợ đen)",
+      "usage": "Get current USD to VND exchange rate"
+    },
+    {
+      "name": "get_bitcoin_price",
+      "description": "Lấy giá Bitcoin hiện tại (USD và VND)",
+      "usage": "Get current Bitcoin price in USD and VND"
+    },
+    {
+      "name": "get_weather",
+      "description": "Lấy thông tin thời tiết cho khu vực Cao Lãnh hoặc TP. Hồ Chí Minh",
+      "usage": "Get weather information for Cao Lãnh or Ho Chi Minh City",
+      "parameters": {
+        "city": {
+          "type": "string",
+          "required": true,
+          "enum": ["Cao Lãnh", "Ho Chi Minh", "Cao Lanh", "HCM", "Saigon"]
+        }
+      }
+    },
+    {
+      "name": "adapter_status",
+      "description": "Check adapter service connection status",
+      "usage": "Verify if the music adapter service is running and accessible"
+    }
+  ]
+}

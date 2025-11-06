@@ -1,480 +1,376 @@
-# 🎵 Proxy API Nhạc Việt for Xiaozhi Music
+# Xiaozhi Music MCP Server System
 
+Complete MCP (Model Context Protocol) server system for music search, streaming, and lyrics via Xiaozhi WebSocket API.
 
-**API Proxy chuyển đổi dữ liệu Nhạc Online MP3 sang định dạng Xiaozhi Music**
+## 🏗️ Architecture
 
-[Tính năng](#-tính-năng) • [Cài đặt](#-cài-đặt-nhanh) • [Sử dụng](#-sử-dụng) • [API](#-api-endpoints) • [Cấu hình](#️-cấu-hình)
+```
+┌─────────────────┐
+│ Xiaozhi Client  │ (WebSocket)
+│   (AI Agent)    │
+└────────┬────────┘
+         │ WSS
+         ▼
+┌─────────────────┐
+│   mcp_pipe.py   │ (WebSocket ↔ stdio bridge)
+└────────┬────────┘
+         │ stdio
+         ▼
+┌─────────────────┐
+│ music_server.py │ (MCP Server)
+└────────┬────────┘
+         │ HTTP
+         ▼
+┌─────────────────┐
+│ xiaozhi-adapter │ (Format converter)
+└────────┬────────┘
+         │ HTTP
+         ▼
+┌─────────────────┐
+│    mp3-api      │ (Zing MP3 API)
+└─────────────────┘
+```
 
-</div>
+## 🚀 Quick Start
 
----
+### Initial Setup
 
-## 📖 Giới thiệu
+**IMPORTANT: Before running, configure your environment variables:**
 
-Đây là phiên bản API Music dành riêng cho **Xiaozhi Music Gốc chạy Server Xiaozhishop**, chạy trên API của [@nvhung9](https://github.com/nvhung9/mp3-api) 🙏
+1. **Copy the example environment file:**
+```bash
+cp .env.example .env
+```
 
-**Xiaozhi Proxy** tạo lớp trung gian (proxy) để chuyển đổi kết quả API từ Zing MP3 sang định dạng tương thích với server Xiaozhi Music chính thức.
+2. **Edit `.env` and add your actual tokens:**
+```bash
+# Replace YOUR_MCP_TOKEN_HERE with your actual Xiaozhi MCP token
+# Replace YOUR_SECRET_KEY_HERE with your actual secret key
+nano .env  # or use your preferred editor
+```
 
-### 🎯 Mục đích
+3. **Never commit the `.env` file to git** - it's already in `.gitignore`
 
-- ✅ Tương thích 100% với ESP32 Xiaozhi Music
-- ✅ Chuyển đổi tự động định dạng API
-- ✅ Dễ dàng deploy với Docker
-- ✅ Hỗ trợ tìm kiếm bài hát tiếng Việt
-- ✅ Trả về 3 bài hát mỗi lần tìm kiếm
-- ✅ Cache thông minh - tự động download trước audio
-- ✅ Streaming nhạc chất lượng cao
-
----
-
-## ✨ Tính năng
-
-- 🎼 **Tìm kiếm bài hát** - Hỗ trợ tìm kiếm tiếng Việt, trả về 3 bài hát
-- 🎧 **Pre-download Audio** - Tự động tải trước 3 bài hát vào cache
-- 💾 **Smart Cache** - Cache tối đa 10 bài hát, tự động xóa bài cũ
-- 🔄 **Format Converter** - Chuyển đổi tự động sang định dạng Xiaozhi
-- 🎵 **Proxy Audio & Lyric** - Stream audio và lời bài hát
-- 🐳 **Docker Ready** - Deploy 1 dòng lệnh
-- ❤️ **Health Check** - Tự động kiểm tra trạng thái và cache
-
----
-
-## 🚀 Cài đặt nhanh
-
-### Yêu cầu hệ thống
-
-- Docker & Docker Compose
-- 1GB RAM trở lên (cache cần ~100-200MB)
-- Port 5005 và 5555 khả dụng
-
-### Bước 1: Clone repository
+### Using Docker (Recommended)
 
 ```bash
-# Tạo thư mục dự án
-mkdir xiaozhi-mp3-svr
-cd xiaozhi-mp3-svr
+# Build and start all services
+./manage.sh build
+./manage.sh start
 
-# Save Repo về.
+# View logs
+./manage.sh logs mcp-server
+
+# Check status
+./manage.sh status
 ```
 
-### Bước 2: Cấu trúc thư mục
+### Manual Setup
 
-Đảm bảo thư mục có cấu trúc như sau:
-
-```
-xiaozhi-mp3-svr/
-├── docker-compose.yml
-├── README.md
-├── mp3-api/
-│   ├── package.json
-│   └── [mp3-api files từ nvhung9]
-└── adapter/
-    ├── xiaozhi-adapter.js
-    └── package.json
+1. **Start adapter service:**
+```bash
+cd adapter
+npm install
+# Make sure .env file exists in project root
+node xiaozhi-adapter.js
 ```
 
-### Bước 3: Khởi động services
+2. **Start MCP server:**
+```bash
+cd mcp-server
+pip install -r requirements.txt
+# Load environment variables from .env file
+export $(cat ../.env | xargs)
+python mcp_pipe.py
+```
+
+## 📦 Services
+
+### 1. mp3-api (Port 5555)
+- Zing MP3 API wrapper
+- Internal service (not exposed)
+
+### 2. xiaozhi-adapter (Port 5005)
+- Converts MP3 API to Xiaozhi format
+- Provides PCM streaming for ESP32
+- Health check: `http://localhost:5005/health`
+
+### 3. mcp-server
+- Python-based MCP server
+- Connects to Xiaozhi via WebSocket
+- Provides 4 tools: search_music, get_music_stream, get_lyrics, adapter_status
+
+## 🛠️ Management Script
+
+The `manage.sh` script provides easy Docker management:
 
 ```bash
-# Khởi động tất cả services
-docker-compose up -d
-
-# Xem logs real-time
-docker-compose logs -f
-
-# Kiểm tra trạng thái
-docker-compose ps
+./manage.sh build          # Build images
+./manage.sh start          # Start services
+./manage.sh stop           # Stop services
+./manage.sh restart        # Restart services
+./manage.sh logs [service] # View logs
+./manage.sh status         # Show status
+./manage.sh shell [service]# Open shell
+./manage.sh rebuild        # Rebuild MCP server
+./manage.sh clean          # Remove all
+./manage.sh test           # Test dependencies
 ```
 
-### Bước 4: Kiểm tra hoạt động
+## 🔧 Configuration
 
+### Environment Variables
+
+**Step 1: Copy the example file**
 ```bash
-# Test MP3 API
-curl http://localhost:5555/health
-
-# Test Xiaozhi Adapter (kiểm tra cache)
-curl http://localhost:5005/health
-
-# Response mẫu:
-# {
-#   "status": "ok",
-#   "cache_size": 0,
-#   "cached_songs": []
-# }
+cp .env.example .env
 ```
 
-Nếu thấy response `{"status":"ok"}` là thành công! 🎉
+**Step 2: Edit `.env` with your credentials**
 
----
+Required variables:
+```env
+# MCP Server Configuration
+MCP_ENDPOINT=wss://api.xiaozhi.me/mcp/?token=YOUR_ACTUAL_TOKEN_HERE
 
-## 🎮 Sử dụng
-
-### Test tìm kiếm bài hát
-
-```bash
-# Tìm kiếm theo tên bài hát ( thay localhost thành IP của bạn )
-curl "http://localhost:5005/stream_pcm?song=Sóng+gió"
-
-# Tìm kiếm kèm tên ca sĩ
-curl "http://localhost:5005/stream_pcm?song=Nơi+này+có+anh&artist=Sơn+Tùng+MTP"
-
-# Response trả về 3 bài hát:
-# {
-#   "count": 3,
-#   "songs": [
-#     {
-#       "title": "Sóng Gió",
-#       "artist": "Jack, K-ICM",
-#       "audio_url": "/proxy_audio?id=ZWAEIUUB",
-#       "lyric_url": "/proxy_lyric?id=ZWAEIUUB",
-#       "thumbnail": "https://...",
-#       "duration": 254
-#     },
-#     ...
-#   ]
-# }
+# Xiaozhi Adapter Configuration
+SECRET_KEY=YOUR_ACTUAL_SECRET_KEY_HERE
 ```
 
-### Phát nhạc từ cache
+**Important:** 
+- ✅ The `.env` file is gitignored and will NOT be committed
+- ✅ The `.env.example` file is tracked and shows the required format
+- ⚠️ Never hardcode tokens directly in docker-compose.yml or source code
 
-```bash
-# Sau khi search, audio đã được cache
-# ESP32 có thể gọi trực tiếp:
-curl "http://localhost:5005/proxy_audio?id=ZWAEIUUB" --output song.mp3
+### MCP Configuration (`mcp-server/mcp_config.json`)
 
-# Lấy lời bài hát
-curl "http://localhost:5005/proxy_lyric?id=ZWAEIUUB"
-```
-
----
-
-### 🎧 Proxy Audio - Phát nhạc từ cache
-
-```http
-GET /proxy_audio?id={song_id}
-```
-
-**Features:**
-- ✅ Serve audio từ cache (nếu có)
-- ✅ Tự động download nếu chưa có trong cache
-- ✅ Response ngay lập tức nếu đã cache
-- ✅ Support Content-Length và Accept-Ranges
-
-**Headers:**
-```
-Content-Type: audio/mpeg
-Content-Length: [file_size]
-Accept-Ranges: bytes
-Cache-Control: public, max-age=86400
-```
-
-### 📝 Proxy Lyric - Lời bài hát
-
-```http
-GET /proxy_lyric?id={song_id}
-```
-
-Trả về lời bài hát dạng LRC format.
-
-**Response:**
-```
-[00:15.23]Bao lời anh đã nói
-[00:18.45]Giờ em không tin nữa
-...
-```
-
-### ❤️ Health Check
-
-```http
-GET /health
-```
-
-Kiểm tra trạng thái service và cache.
-
-**Response:**
 ```json
 {
-  "status": "ok",
-  "cache_size": 6,
-  "cached_songs": [
-    "ZWAEIUUB",
-    "Z7I0OFAQ",
-    "Z6EW6OOC",
-    "..."
-  ]
+  "mcpServers": {
+    "xiaozhi-music": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["-u", "music_server.py"],
+      "env": {
+        "ADAPTER_URL": "http://localhost:5005"
+      }
+    }
+  }
 }
 ```
 
----
+## 📡 Available MCP Tools
 
-## ⚙️ Cấu hình
+### Music Tools
 
-### Biến môi trường
-
-| Biến | Mô tả | Mặc định |
-|------|-------|----------|
-| `PORT` | Port của Xiaozhi Adapter | 5005 |
-| `MP3_API_URL` | URL của MP3 API service | http://mp3-api:5555 |
-| `NODE_ENV` | Môi trường chạy | production |
-
-### Cache Configuration
-
-Trong file `xiaozhi-adapter.js`:
-
-```javascript
-const CACHE_MAX_SIZE = 10; // Cache tối đa 10 bài hát
+#### 1. search_music
+Search for music by song name and artist
+```json
+{
+  "song": "Nơi này có anh",
+  "artist": "Sơn Tùng MTP"
+}
 ```
 
-**Cách hoạt động:**
-- Mỗi lần search, tự động download 3 bài hát vào cache
-- Cache tối đa 10 bài (có thể tăng lên nếu muốn)
-- Tự động xóa bài cũ nhất khi cache đầy (FIFO)
-- Mỗi file audio ~3-5MB
-
-### Thay đổi port
-
-Sửa trong `docker-compose.yml`:
-
-```yaml
-ports:
-  - "8080:5005"  # Đổi port 5005 thành 8080
+#### 2. get_music_stream
+Get streaming URL for a song
+```json
+{
+  "song": "Nơi này có anh",
+  "artist": "Sơn Tùng MTP"
+}
 ```
 
----
-
-## 📊 Cách thức hoạt động
-
-### Luồng xử lý (3 Songs Buffered Version)
-
-```
-1. ESP32 gửi: /stream_pcm?song=Sóng+gió
-
-2. Adapter tìm kiếm → Tìm thấy 3 bài phù hợp
-
-3. Pre-download Audio:
-   ├─ Bài 1: "Sóng Gió" (Jack) → Download → Cache
-   ├─ Bài 2: "Sóng Gió Remix" → Download → Cache
-   └─ Bài 3: "Sóng Gió Sinkra" → Download → Cache
-
-4. Trả về JSON với 3 bài hát:
-   {
-     "count": 3,
-     "songs": [...]
-   }
-
-5. ESP32 chọn bài → Gọi /proxy_audio?id=XXX
-
-6. Adapter serve ngay từ cache (đã download sẵn) ✅
+#### 3. get_lyrics
+Get lyrics for a song
+```json
+{
+  "song": "Nơi này có anh"
+}
 ```
 
-### Ưu điểm của cách này
+### Financial & Market Tools
 
-- ⚡ **Phát nhạc ngay lập tức** - Không phải đợi download
-- 🎯 **Tối ưu cho ESP32** - Buffer 3 bài, không cần xử lý phức tạp
-- 💾 **Tiết kiệm băng thông** - Cache giảm request đến Zing MP3
-- 🔄 **Smart caching** - Tự động quản lý cache
+#### 4. get_gold_price
+Lấy giá vàng trong nước (SJC, PNJ, DOJI, v.v.)
+```json
+{}
+```
 
----
+**Response includes:**
+- Giá vàng các thương hiệu: SJC, PNJ, DOJI, Bảo Tín Minh Châu
+- Giá mua vào / bán ra
+- Loại vàng: nhẫn, miếng 1 lượng, 5 chỉ, v.v.
+- Cập nhật theo thời gian thực
 
-## 🔧 Quản lý Docker
+**API Source:** https://api.vietqr.io/v1/gold-price
 
-### Các lệnh thường dùng
+#### 5. get_usd_rate
+Lấy tỷ giá USD/VND từ Vietcombank
+```json
+{}
+```
 
+**Response includes:**
+- Giá mua tiền mặt (Buy Cash)
+- Giá mua chuyển khoản (Buy Transfer)
+- Giá bán (Sell)
+- Thời gian cập nhật
+
+**API Source:** Vietcombank Portal (với fallback đến Exchange Rate API)
+
+#### 6. get_bitcoin_price
+Lấy giá Bitcoin hiện tại (USD và VND)
+```json
+{}
+```
+
+**Response includes:**
+- Giá Bitcoin (USD)
+- Giá Bitcoin (VND)
+- Thay đổi 24h (%)
+- Market cap (USD)
+
+**API Source:** CoinGecko API
+
+### Weather Tools
+
+#### 7. get_weather
+Lấy thông tin thời tiết cho Cao Lãnh hoặc TP. Hồ Chí Minh
+```json
+{
+  "city": "Ho Chi Minh"
+}
+```
+
+**Supported cities:**
+- `"Cao Lãnh"` hoặc `"Cao Lanh"` - Cao Lãnh, Đồng Tháp
+- `"Ho Chi Minh"`, `"HCM"`, `"Saigon"` - TP. Hồ Chí Minh
+
+**Response includes:**
+- Nhiệt độ hiện tại (°C)
+- Nhiệt độ cảm nhận
+- Độ ẩm (%)
+- Lượng mưa (mm)
+- Tốc độ gió (km/h)
+- Tình trạng thời tiết (bằng tiếng Việt)
+
+**API Source:** Open-Meteo API (free, no API key required)
+
+### System Tools
+
+#### 8. adapter_status
+Check adapter service health
+```json
+{}
+```
+
+## 🔄 Reconnection Strategy
+
+The WebSocket pipe automatically reconnects:
+- Initial backoff: 1 second
+- Maximum backoff: 600 seconds
+- Exponential backoff
+- Infinite retry attempts
+
+## 📊 Health Checks
+
+All services include health checks:
+- **mp3-api**: 30s interval, HTTP check
+- **xiaozhi-adapter**: 30s interval, HTTP check
+- **mcp-server**: 30s interval, process check
+
+## 🐛 Debugging
+
+### View logs for specific service
 ```bash
-# Khởi động
-docker-compose up -d
-
-# Dừng services
-docker-compose stop
-
-# Xóa containers
-docker-compose down
-
-# Xem logs
-docker-compose logs -f
-
-# Xem logs của adapter (để thấy cache)
-docker-compose logs -f xiaozhi-adapter
-
-# Restart service
-docker-compose restart xiaozhi-adapter
-
-# Rebuild containers
-docker-compose up -d --build
-
-# Xem trạng thái
-docker-compose ps
+./manage.sh logs mcp-server
+./manage.sh logs xiaozhi-adapter
+./manage.sh logs mp3-api
 ```
 
-### Xem logs real-time
-
+### Access container shell
 ```bash
-# Logs của adapter sẽ hiển thị:
-docker-compose logs -f xiaozhi-adapter
-
-# Output mẫu:
-# 🔍 Searching: "Sóng gió" by ""
-# ✅ Found 3 songs
-# 📥 Processing: Sóng Gió (ID: ZWAEIUUB)
-# ⬇️ Pre-downloading audio for ZWAEIUUB...
-# ✅ Downloaded 4523156 bytes
-# ...
-# ✅ Returning 3 songs
+./manage.sh shell mcp-server
 ```
 
-### Update code
-
+### Test MCP server directly
 ```bash
-# Pull code mới
-git pull origin main
-
-# Restart services
-docker-compose down
-docker-compose up -d --build
+cd mcp-server
+python music_server.py
+# In another terminal:
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | python music_server.py
 ```
 
----
+## 📝 Development
 
-## 🐛 Xử lý sự cố
+### File Structure
+```
+.
+├── docker-compose.yml          # Main Docker configuration
+├── docker-compose.override.yml # Development overrides
+├── manage.sh                   # Management script
+├── README.md                   # This file
+├── adapter/                    # Xiaozhi adapter service
+│   ├── package.json
+│   └── xiaozhi-adapter.js
+├── mcp-server/                 # MCP server
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── mcp_config.json
+│   ├── mcp_pipe.py            # WebSocket bridge
+│   ├── music_server.py        # MCP server
+│   └── README.md
+└── mp3-api/                    # MP3 API service
+    ├── package.json
+    └── server.js
+```
 
-### Service không khởi động
-
+### Local Development
 ```bash
-# Kiểm tra logs chi tiết
-docker-compose logs
+# Start dependencies only
+docker-compose up -d mp3-api xiaozhi-adapter
 
-# Kiểm tra port đã được sử dụng chưa
-netstat -tulpn | grep 5005
-netstat -tulpn | grep 5555
-
-# Stop service đang dùng port
-sudo kill -9 $(lsof -t -i:5005)
+# Run MCP server locally
+cd mcp-server
+export MCP_ENDPOINT="wss://api.xiaozhi.me/mcp/?token=YOUR_TOKEN"
+export ADAPTER_URL="http://localhost:5005"
+python mcp_pipe.py
 ```
 
-### Không tìm được bài hát
+## 🔐 Security Notes
 
-- Kiểm tra kết nối internet
-- Kiểm tra MP3 API có hoạt động: `curl http://localhost:5555/health`
-- Xem logs: `docker-compose logs -f mp3-api`
-- Thử search trực tiếp trên MP3 API: `curl "http://localhost:5555/api/search?q=son+tung"`
+### Token Management
+- ✅ **DO**: Use `.env` file for tokens (gitignored)
+- ✅ **DO**: Use `.env.example` as a template (tracked in git)
+- ✅ **DO**: Keep your MCP_ENDPOINT token secure
+- ❌ **DON'T**: Commit `.env` files with real tokens
+- ❌ **DON'T**: Hardcode tokens in source code
+- ❌ **DON'T**: Share tokens publicly
 
-### Cache không hoạt động
+### Before Publishing to GitHub
+1. Ensure `.env` is in `.gitignore` ✓
+2. Remove any hardcoded tokens from all files ✓
+3. Provide `.env.example` with placeholder values ✓
+4. Update README with setup instructions ✓
+5. Run `git status` to verify `.env` is not tracked
 
-```bash
-# Kiểm tra cache status
-curl http://localhost:5005/health
+### Rotating Tokens
+If your token is compromised:
+1. Generate a new token from Xiaozhi API
+2. Update your `.env` file
+3. Restart services: `./manage.sh restart`
 
-# Response sẽ hiển thị:
-# {
-#   "status": "ok",
-#   "cache_size": 6,
-#   "cached_songs": ["ZWAEIUUB", "Z7I0OFAQ", ...]
-# }
+## 📚 References
 
-# Xem logs để thấy quá trình cache
-docker-compose logs -f xiaozhi-adapter
-```
+- [MCP Protocol](https://modelcontextprotocol.io/)
+- [MCP Calculator Example](https://github.com/78/mcp-calculator)
+- [Xiaozhi API Documentation](https://api.xiaozhi.me/)
 
-### ESP32 không kết nối được
+## 🤝 Contributing
 
-- Kiểm tra IP server đúng chưa (dùng `ip a` hoặc `ifconfig`)
-- Kiểm tra firewall có block port 5005 không
-- Thử truy cập từ máy khác trong mạng: `curl http://[SERVER_IP]:5005/health`
-- Test trực tiếp: `curl "http://[SERVER_IP]:5005/stream_pcm?song=test"`
+Feel free to submit issues and enhancement requests!
 
-### Download audio bị lỗi
+## 📄 License
 
-```bash
-# Xem logs chi tiết
-docker-compose logs -f xiaozhi-adapter
-
-# Lỗi thường gặp:
-# ❌ Failed to pre-download XXX: timeout
-# → Tăng timeout trong xiaozhi-adapter.js
-
-# ❌ Failed to pre-download XXX: 403 Forbidden
-# → API Zing MP3 có thể đang block, chờ một lúc rồi thử lại
-```
-
----
-
-## 🎯 Tips & Tricks
-
-### Tăng cache size
-
-Sửa trong `adapter/xiaozhi-adapter.js`:
-
-```javascript
-const CACHE_MAX_SIZE = 20; // Tăng lên 20 bài
-```
-
-Sau đó rebuild:
-```bash
-docker-compose up -d --build
-```
-
-### Giảm số bài hát trả về
-
-Nếu muốn chỉ trả về 1 bài thay vì 3:
-
-```javascript
-// Trong xiaozhi-adapter.js, dòng ~45
-const topSongs = songs.slice(0, 1); // Đổi từ 3 thành 1
-```
-
-### Monitoring cache
-
-```bash
-# Script để monitor cache real-time
-watch -n 5 'curl -s http://localhost:5005/health | jq'
-```
-
----
-
-## 🤝 Đóng góp
-
-Mọi đóng góp đều được chào đón! 
-
-1. Fork repository
-2. Tạo branch mới (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to branch (`git push origin feature/AmazingFeature`)
-5. Tạo Pull Request
-
----
-
-## 📝 License
-
-Dự án này được phân phối dưới giấy phép MIT. Xem file `LICENSE` để biết thêm chi tiết.
-
----
-
-## 🙏 Credits
-
-- **MP3 API** by [@nvhung9](https://github.com/nvhung9/mp3-api) - API gốc lấy dữ liệu từ Zing MP3
-- **Xiaozhi Music** - Thiết bị phát nhạc ESP32
-- **Community Contributors** - Cảm ơn tất cả những người đóng góp
-
----
-
-## 🔗 Links hữu ích
-
-- [nvhung9/mp3-api](https://github.com/nvhung9/mp3-api) - Original MP3 API
-- [Docker Documentation](https://docs.docker.com/)
-- [Express.js Documentation](https://expressjs.com/)
-
----
-
-## 📧 Liên hệ
-
-Nếu có vấn đề hoặc câu hỏi đừng hỏi, vì mình nhờ AI làm cả nên ko rành ạ =))
-
----
-
-<div align="center">
-
-**⭐ Nếu thấy hữu ích, đừng quên cho project một star nhé! ⭐**
-
-Made with ❤️ for Xiaozhi Music Community
-
-</div>
+MIT
