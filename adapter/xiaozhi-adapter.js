@@ -15,6 +15,7 @@ const ADAPTER_URL=  process.env.ADAPTER_URL || 'https://xiaozhi_music.monpham.wo
 // CACHE ĐƠN GIẢN
 const audioCache = new Map(); // {songId: Buffer}
 const CACHE_MAX_SIZE = 100;
+const MAX_CHUNK_SIZE = 40 * 1024; // 50KB - ESP32 RAM limit
 
 // ===== FIX UTF-8 ENCODING =====
 app.use(express.urlencoded({ extended: true }));
@@ -336,26 +337,54 @@ async function compressAudio(audioBuffer) {
         inputStream.push(null);
 
         const chunks = [];
-        const outputStream = new Readable({
-            read() {
-                this.push(Buffer.concat(chunks));
-                this.push(null);
-            }
-        });
 
         ffmpeg(inputStream)
+            .inputFormat('mp3')
             .audioCodec('libmp3lame')
-            .audioBitrate('128k')
+            .audioBitrate('16k')   // Even lower bitrate for ESP32 (was 32k)
+            .audioChannels(1)      // Mono = 50% smaller
+            .audioFrequency(16000) // Low sample rate = much smaller files
             .format('mp3')
+            // Ultra-fast compression for small files
+            .outputOptions([
+                '-q:a 9',          // Lower quality = smaller files (0-9, higher = smaller)
+                '-compression_level 0', // Fastest compression
+                '-threads 0',      // Use all CPU cores
+                '-ar 16000'        // 16kHz sample rate (good for voice/music on ESP32)
+            ])
             .on('error', (err) => {
-                reject(err);
-            })
-            .on('data', (chunk) => {
-                chunks.push(chunk);
+                console.error('❌ Compression error:', err.message);
+                // If compression fails, return original
+                resolve(audioBuffer);
             })
             .on('end', () => {
-                resolve(Buffer.concat(chunks));
+                if (chunks.length > 0) {
+                    const compressed = Buffer.concat(chunks);
+                    
+                    // Check if file is still too large
+                    if (compressed.length > MAX_CHUNK_SIZE) {
+                        console.log(`⚠️ File still too large (${compressed.length} bytes), keeping first ${MAX_CHUNK_SIZE} bytes`);
+                        // Cut to 50KB - this will cut the song duration but fit in ESP32 RAM
+                        resolve(compressed.slice(0, MAX_CHUNK_SIZE));
+                    } else {
+                        resolve(compressed);
+                    }
+                } else {
+                    // If no output, return original (cut if needed)
+                    if (audioBuffer.length > MAX_CHUNK_SIZE) {
+                        resolve(audioBuffer.slice(0, MAX_CHUNK_SIZE));
+                    } else {
+                        resolve(audioBuffer);
+                    }
+                }
             })
-            .pipe(outputStream, { end: true });
+            .on('stderr', (stderrLine) => {
+                // Optionally log ffmpeg output for debugging
+                // console.log('FFmpeg:', stderrLine);
+            })
+            .pipe()
+            .on('data', (chunk) => {
+                chunks.push(chunk);
+            });
     });
 }
