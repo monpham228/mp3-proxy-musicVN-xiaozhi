@@ -186,8 +186,8 @@ app.get('/stream_pcm', async (req, res) => {
                 title: songItem.title || song,
                 artist: songItem.artistsNames || artist || 'Unknown',
                 // ✅ RELATIVE PATH - ESP32 sẽ tự ghép với base_url
-                audio_url: `${ADAPTER_URL}/proxy_audio?id=${songId}`,
-                lyric_url: `${ADAPTER_URL}/proxy_lyric?id=${songId}`,
+                audio_url: `/proxy_audio?id=${songId}`,
+                lyric_url: `/proxy_lyric?id=${songId}`,
                 thumbnail: songItem.thumbnail || songItem.thumbnailM || '',
                 duration: songItem.duration || 0,
                 language: 'unknown'
